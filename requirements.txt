@@ -1,4 +1,7 @@
 Flask>=3.1.2
-PyPDF2
+pdfplumber
 python-dotenv
-openai
+torch 
+transformers
+
+
