@@ -3,5 +3,6 @@ pdfplumber
 python-dotenv
 torch 
 transformers
+flask-mail
 
 

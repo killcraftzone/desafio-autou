@@ -6,62 +6,134 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Classificador de Emails com IA - AutoU</title>
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Roboto', sans-serif;
+    }
+
+    .drag-area-active {
+      border-color: #8b5cf6;
+      background-color: #f3e8ff;
+    }
+  </style>
 </head>
 
-<body class="bg-gray-400 flex items-center justify-center min-h-screen">
-  <div class="bg-white shadow-lg rounded-2xl p-10 m-10 w-full max-w-lg">
-    <h1 class="text-2xl font-semibold text-purple-500 text-center mb-4">Classificador de Emails</h1>
-    <form id="formId" class="space-y-4" method="post">
-      <!-- Descrição de arquivos -->
-      <div>
-        <label for="remetenteId" class="font-bold">Remetente:</label>
-        <input id="remetenteId"
-          class="bg-gray-200 appearance-none border border-gray-200 rounded w-full py-2 px-4 text-gray-700 leading-tight focus:outline-none focus:bg-white focus:border-purple-500"
-          type="text" placeholder="Digite o email">
+<body class="bg-gray-100 flex items-center justify-center min-h-screen p-6">
+  <div
+    class="bg-white shadow-xl hover:shadow-2xl transition-shadow duration-300 rounded-xl p-6 sm:p-10 w-full max-w-xl border border-gray-200">
+    <header class="mb-6">
+      <h1 class="text-3xl font-semibold text-purple-500 text-center">Classificador de Emails</h1>
+      <p class="text-sm text-gray-500 text-center mt-1">Use a IA para organizar e os emails com mais agilidade.</p>
+    </header>
+    <!-- Formulário  -->
+    <form id="formId" class="space-y-6" method="post" enctype="multipart/form-data">
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label for="remetenteId" class="block text-sm font-bold text-gray-700 mb-1">Remetente:</label>
+          <input id="remetenteId" name="remetente" type="email"
+            class="form-input transition duration-150 ease-in-out block w-full border border-gray-300 rounded-lg shadow-sm py-2 px-3 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+            placeholder="exemplo@exemplo.com" required>
+        </div>
+        <div>
+          <label for="destinatarioId" class="block text-sm font-bold text-gray-700 mb-1">Destinatário:</label>
+          <input id="destinatarioId" name="destinatario" type="email"
+            class="form-input transition duration-150 ease-in-out block w-full border border-gray-300 rounded-lg shadow-sm py-2 px-3 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+            placeholder="exemplo@exemplo.com" required>
+        </div>
       </div>
       <div>
-        <label for="destinatarioId" class="font-bold">Destinatário:</label>
-        <input id="destinatarioId"
-          class="bg-gray-200 appearance-none border border-gray-200 rounded w-full py-2 px-4 text-gray-700 leading-tight focus:outline-none focus:bg-white focus:border-purple-500"
-          type="text" type="text" placeholder="Digite o email">
+        <label for="descricaoId" class="block text-sm font-bold text-gray-700 mb-1">Descrição:</label>
+        <textarea id="descriptionId" name="descricao" rows="5"
+          class="form-textarea transition duration-150 ease-in-out block w-full border border-gray-300 rounded-lg shadow-sm py-2 px-3 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-y"
+          placeholder="Digite as informações do email aqui para que a IA possa analisá-lo." autofocus>
+        </textarea>
       </div>
-      <div>
-        <label for="descripitionId" class="font-bold">Descrição:</label>
-        <textarea id="descripitionId"
-          class="bg-gray-200 appearance-none border border-gray-200 rounded w-full py-2 px-4 text-gray-700 leading-tight focus:outline-none focus:bg-white focus:border-purple-500"
-          placeholder="Descreva as informações do email" autofocus></textarea>
-      </div>
-      <div id="suggestionsId" class="suggestions">
-        <p>Aguardando digitação da IA...</p>
+
+      <div id="suggestionsId"
+        class="p-3 bg-purple-50 border border-purple-200 rounded-lg text-sm text-purple-800 shadow-inner">
+        <p><span class="font-semibold">Aguardando análise da IA:</span> A classificação aparecerá aqui após o envio.</p>
       </div>
       <!-- Upload de arquivos -->
-      <div class="flex flex-col items-center justify-center pt-5 pb-6">
-        <label for="dropfileId"
-          class="flex flex-col items-center justify-center w-full h-64 border-2 border-gray-300 border-dashed rounded-lg cursor-pointer bg-gray-50">
-          <p class="mb-2 text-sm">
-            <span class="font-semibold">Clique para selecionar</span> ou arraste o arquivo aqui
-          </p>
-          <p class="text-xs">(.txt ou .pdf)</p>
-      </div>
-      <input id="dropfileId" type="file" class="hidden" />
-      </label>
       <div>
-        <button
-          class="shadow bg-purple-500 hover:bg-purple-400 focus:shadow-outline focus:outline-none text-white font-bold py-2 px-4 rounded"
-          type="button">Enviar Email</button>
+        <label for="dropfileId" id="dropAreaLabelId"
+          class="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition duration-150 border-gray-300 text-gray-500 hover:text-gray-700">
+          <p class="mb-1 text-sm"><span class="font-bold">Clique para selecionar</span> ou arraste o anexo aqui</p>
+          <p id="fileNameDisplayId" class="text-xs">Apenas arquivos <span class="font-mono">.txt</span> ou <span
+              class="font-mono">.pdf</span></p>
+          <input id="dropfileId" name="anexo" type="file" class="hidden" accept=".txt,.pdf" />
+        </label>
+      </div>
+      <div>
+        <button id="submitId"
+          class="w-full transition duration-300 shadow-md bg-purple-600 hover:bg-purple-700 focus:ring-4 focus:ring-purple-300 focus:ring-opacity-50 text-white font-semibold py-3 px-4 rounded-lg focus:outline-none disabled:opacity-50"
+          type="submit">Analisar Email</button>
       </div>
     </form>
   </div>
 
-<script>
-  const emailTextarea = document.getElementById('descripitionId');
-  const suggestions = document.getElementById('suggestions');
-   
-  // Função para gerar sugestões
-  
+  <script>
+    const form = document.getElementById('formId');
+    const dropAreaLabel = document.getElementById('dropAreaLabelId');
+    const dropFile = document.getElementById('dropfileId');
+    const fileNameDisplay = document.getElementById('fileNameDisplayId');
+    const submit = document.getElementById('submitId');
+
+    // Exibir nome do arquivo dropado
+    dropFile.addEventListener('change', () => {
+      handleFiles(dropFile.files);
+    });
+
+    dropAreaLabel.addEventListener('drop', (e) => {
+      const dt = e.dataTransfer;
+      const files = dt.files;
+      handleFiles(files);
+      dropFile.files = files;
+    });
 
 
-</script>
+    function handleFiles(files) {
+      if (files.length > 0) {
+        // Atualiza o texto para mostrar o nome do arquivo
+        fileNameDisplay.innerHTML = `<span class="font-bold text-purple-600">${files[0].name}</span> anexado com sucesso!`;
+      } else {
+        // Restaura o texto original
+        fileNameDisplay.innerHTML = `Apenas arquivos <span class="font-mono">.txt</span> ou <span class="font-mono">.pdf</span>`;
+      }
+    }
+
+    // Evento de envio de sugestoes no formulario
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+
+      submit.disabled = true;
+      submit.textContent = 'Analisando... ';
+
+      setTimeout(() => {
+        const suggestionsArea = document.getElementById('suggestionsId');
+
+        // Sugestão de resposta da IA
+        const remetente = document.getElementById('remetenteId').value;
+        const classificacao = 'Prioridade Alta - Teste de IA';
+        const categoria = 'Hugging Face';
+
+        suggestionsArea.innerHTML = `
+                    <p class="mb-2"><span class="font-semibold text-purple-900">Resultado da Sugestão (IA):</span></p>
+                    <ul class="list-disc list-inside space-y-1">
+                        <li><span class="font-medium">Classificação:</span> ${classificacao}</li>
+                        <li><span class="font-medium">Categoria:</span> ${categoria}</li>
+                        <li><span class="font-medium">Ação Sugerida:</span> Responder em até 4h.</li>
+                    </ul>`;
+
+        submit.disabled = false;
+        submit.textContent = 'Analisar Email';
+
+      }, 2500); // Aguarda 2.5 segundos para processar a sugestão da IA
+    });
+
+
+  </script>
 
 </body>
 
