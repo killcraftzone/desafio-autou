@@ -1,15 +1,23 @@
 import os
-from flask import Flask, render_template, request, jsonify, redirect, url_for, flash
-from transformers import pipeline
+import tempfile
+import shutil
+import time
+import secrets
 import pdfplumber
+from flask import Flask, render_template, request, flash, redirect, url_for
+from huggingface_hub import login
+from transformers import pipeline
 from dotenv import load_dotenv
-from flask_mail import Mail, Message
 from werkzeug.utils import secure_filename
+from flask_mail import Mail
 
 load_dotenv()
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY')
+app.config['SECRET_KEY'] = os.getenv("SECRET_KEY", secrets.token_hex(32))
+# Pasta temporária para uploads
+app.config['UPLOAD_FOLDER'] = tempfile.mkdtemp()
+ALLOWED_EXTENSIONS = {'txt', 'pdf'}
 
 # Config Plugin de envio de emails
 app.config['MAIL_SERVER'] = os.environ.get('MAIL_SERVER') or 'smtp.gmail.com'
@@ -18,131 +26,147 @@ app.config['MAIL_USE_TLS'] = os.environ.get('MAIL_USE_TLS') == 'True'
 app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')
 app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')
 app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_USERNAME')
+mail = Mail(app)
 
-# Config de Upload de arquivos
-UPLOAD_FOLDER = 'uploads'
-ALLOWED_EXTENSIONS = {'txt', 'pdf'}
-app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
+# Config da IA (Hugging Face)
+hf_token = os.environ.get('HUGGINGFACE_TOKEN')
+generator = None
 
-# Criar diretório de uploads se não existir
-if not os.path.exists(UPLOAD_FOLDER):
-    os.makedirs(UPLOAD_FOLDER)
-
-# Config da IA
-try:
-    summarizer = pipeline("summarization", model="facebook/bart-large-cnn")
-except Exception as e:
-    print(f"Erro ao carregar o modelo de IA: {e}")
-    summarizer = None
+if hf_token:
+    try:
+        login(token=hf_token)
+        # Usamos gpt2 para simular a geração de resposta
+        generator = pipeline("text-generation", model="gpt2")
+        print("Modelo de IA 'gpt2' carregado e pronto.")
+    except Exception as e:
+        print(f"Falha ao logar ou carregar o modelo de IA: {e}")
+else:
+    print("Variável HUGGINGFACE_TOKEN não encontrada. A IA será desabilitada.")
 
 
 def allowed_file(filename):
-    """Verifica se o arquivo tem uma extensão permitida"""
+    # Verifica a extensão do arquivo selecionado
     return '.' in filename and \
            filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
 def extract_text_from_pdf(file_path):
-    """Extrai texto de um arquivo PDF"""
+    # Extrai o texto de um arquivo PDF
     try:
         text = ""
         with pdfplumber.open(file_path) as pdf:
-            for page in pdf.pages:
+            # Limita o pdf em 5 páginas
+            for page in pdf.pages[:5]:
                 text += page.extract_text() or ""
         return text
     except Exception as e:
-        print(f"Erro ao extrair texto do PDF: {e}")
+        app.logger.error(f"Erro ao extrair o PDF: {e}")
         return ""
 
 
-def send_email_notification(remetente, destinatario, descricao, ia_summary):
-    """Envia uma notificação por e-mail sobre o novo envio."""
-    if not app.config.get('MAIL_USERNAME'):
-        print("Aviso: Configurações de e-mail ausentes. Notificação não enviada.")
+def analyze_email_with_ia(email_content, generator_pipeline):
+    # Simula uma resposta com IA
+    if not generator_pipeline:
+        return {
+            'categoria': 'IA Indisponível',
+            'resposta_sugerida': 'O serviço de IA não está ativo.'
+        }
+
+    content_lower = email_content.lower()
+    is_produtivo = len(
+        email_content) > 300 or 'importante' in content_lower or 'urgente' in content_lower
+    categoria = 'Produtivo' if is_produtivo else 'Improdutivo'
+
+    prompt = f"Gere uma resposta para o email. O email é sobre um tópico {categoria}: '{email_content}'\n\nResposta Sugerida:"
+
+    try:
+        # Pausa para o processamento da IA
+        time.sleep(1.5)
+
+        result = generator_pipeline(
+            prompt,
+            max_length=200 + len(prompt.split()),
+            min_length=50,
+            num_return_sequences=1,
+            do_sample=True,
+            temperature=0.8,
+            pad_token_id=generator_pipeline.tokenizer.eos_token_id
+        )
+
+        raw_response = result[0]["generated_text"].replace(prompt, '').strip()
+
+        resposta_sugerida = f"Prezado(a),\n\n{raw_response}\n\nAtenciosamente,\nAssistente IA."
+
+    except Exception as e:
+        app.logger.error(f"Erro na geração de texto da IA: {e}")
+        resposta_sugerida = "Falha ao gerar a resposta de IA."
+
+    return {
+        'categoria': categoria,
+        'resposta_sugerida': resposta_sugerida
+    }
 
 
 @app.route("/", methods=['GET', 'POST'])
-def template():
-    ia_summary = ""
+def classificador_email():
+    resultado_ia = None
+
     if request.method == 'POST':
-        # Processa os dados do formulário
         remetente = request.form.get('remetente', '')
         destinatario = request.form.get('destinatario', '')
-        descricao = request.form.get('descricao', '')
-        file = request.files.get('anexo')
+        conteudo_email = request.form.get('conteudo_email', '')
+        arquivo_email = request.files.get('arquivo_email')
 
-        uploaded_text = ""
+        full_text = conteudo_email
         filepath = None
 
-       # 1. Processamento de Arquivo
-        if file:
-            filename_value: str = file.filename or ""
-            if filename_value and allowed_file(filename_value):
-                try:
-                    filename = secure_filename(filename_value)
-                    filepath = os.path.join(
-                        app.config['UPLOAD_FOLDER'], filename)
-                    file.save(filepath)
-
-                    if filename.endswith('.pdf'):
-                        uploaded_text = extract_text_from_pdf(filepath)
-                    elif filename.endswith('.txt'):
-                        with open(filepath, 'r', encoding='utf-8') as f:
-                            uploaded_text = f.read()
-                except Exception as e:
-                    print(f"Erro ao processar arquivo: {e}")
-                    uploaded_text = ""
-                    filepath = None
-
-        # Combina texto do formulário e do anexo
-        full_text = descricao + "\n\n" + uploaded_text
-
-        # 2. Processamento da IA (Sumarização)
-        ia_summary = "Nenhuma sumarização gerada (texto muito curto ou IA indisponível)."
-        if full_text.strip() and summarizer:
+        if arquivo_email and arquivo_email.filename and allowed_file(arquivo_email.filename):
             try:
-                result = summarizer(full_text, max_length=150,
-                                    min_length=50, do_sample=False)
-                ia_summary = result[0]['summary_text']
+                filename = secure_filename(arquivo_email.filename)
+                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+                arquivo_email.save(filepath)
+
+                if filename.endswith('.pdf'):
+                    text_from_file = extract_text_from_pdf(filepath)
+                elif filename.endswith('.txt'):
+                    with open(filepath, 'r', encoding='utf-8') as f:
+                        text_from_file = f.read()
+
+                # Adiciona o texto do arquivo a variavel full_text
+                full_text = text_from_file
+                flash(f'Anexo "{filename}" lido com sucesso.', 'success')
+
             except Exception as e:
-                print(f"Erro na sumarização da IA: {e}")
+                app.logger.error(f"Erro ao processar arquivo: {e}")
+                flash('Erro ao processar o arquivo anexado.', 'error')
+                return redirect(url_for('classificador_email'))
+            finally:
+                if filepath and os.path.exists(filepath):
+                    os.remove(filepath)
 
-        # 4. Limpeza (remove o arquivo após o processamento)
-        if filepath and os.path.exists(filepath):
-            os.remove(filepath)
+        # Remove os arquivos temporários
+        shutil.rmtree(app.config['UPLOAD_FOLDER'])
+        app.config['UPLOAD_FOLDER'] = tempfile.mkdtemp()
 
-        flash('Email processado e notificação enviada com sucesso!', 'success')
+        if not full_text.strip():
+            flash(
+                'Informe o conteúdo do email para análise.', 'error')
+            return redirect(url_for('classificador_email'))
 
-        # Redireciona para evitar reenvio do formulário no refresh
-        return redirect(url_for('template'))
+        resultado_ia = analyze_email_with_ia(full_text, generator)
 
-    return render_template("index.html", ia_summary=ia_summary)
+    return render_template("index.html", resultado_ia=resultado_ia)
 
 
-@app.route("/api/suggestions", methods=['POST'])
-def get_suggestions():
-    """Endpoint para gerar sugestões de IA"""
-    if not summarizer:
-        return jsonify({'suggestions': 'Modelo de IA não carregado.'}), 503
-
+@app.teardown_appcontext
+def shutdown_session(exception=None):
+    # Limpa a pasta temporária ao executar uma nova análise
     try:
-        data = request.get_json()
-        text = data.get('text', '')
-
-        if not text.strip():
-            return jsonify({'suggestions': 'Digite algo para gerar sugestões...'})
-
-        # Gera sugestões usando o modelo de sumarização
-        result = summarizer(text, max_length=100,
-                            min_length=30, do_sample=False)
-        suggestions = result[0]['summary_text']
-
-        return jsonify({'suggestions': suggestions})
-
+        if os.path.exists(app.config['UPLOAD_FOLDER']):
+            shutil.rmtree(app.config['UPLOAD_FOLDER'])
     except Exception as e:
-        return jsonify({'error': f'Erro ao gerar sugestões: {str(e)}'}), 500
+        print(f"Erro ao limpar a pasta temporária: {e}")
 
 
 if __name__ == '__main__':
-    # Inicia o servidor local Flask
-    app.run(debug=True)
+    app.run(debug=True, threaded=True)

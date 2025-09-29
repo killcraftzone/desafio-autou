@@ -2,87 +2,198 @@
 <html lang="pt-br">
 
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Classificador de Emails com IA - AutoU</title>
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@100..900&display=swap" rel="stylesheet" />
   <style>
     body {
-      font-family: 'Roboto', sans-serif;
+      font-family: 'Inter', sans-serif;
     }
 
     .drag-area-active {
-      border-color: #8b5cf6;
-      background-color: #f3e8ff;
+      border-color: #8b5cf6 !important;
+      background-color: #f3e8ff !important;
+    }
+
+    .spinner {
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-top: 4px solid #fff;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% {
+        transform: rotate(0deg);
+      }
+
+      100% {
+        transform: rotate(360deg);
+      }
     }
   </style>
 </head>
 
-<body class="bg-gray-100 flex items-center justify-center min-h-screen p-6">
+<body class="bg-gray-50 flex items-center justify-center min-h-screen sm:p-6">
   <div
     class="bg-white shadow-xl hover:shadow-2xl transition-shadow duration-300 rounded-xl p-6 sm:p-10 w-full max-w-xl border border-gray-200">
-    <header class="mb-6">
-      <h1 class="text-3xl font-semibold text-purple-500 text-center">Classificador de Emails</h1>
-      <p class="text-sm text-gray-500 text-center mt-1">Use a IA para organizar e os emails com mais agilidade.</p>
-    </header>
-    <!-- Formulário  -->
-    <form id="formId" class="space-y-6" method="post" enctype="multipart/form-data">
+    <header class="mb-8">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="space-y-3 mb-6">
+        {% for category, message in messages %}
+        {% if category == 'success' %}
+        <div class="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded-lg shadow-sm" role="alert">
+          <p class="font-medium">{{ message }}</p>
+        </div>
+        {% else %}
+        <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-lg shadow-sm" role="alert">
+          <p class="font-medium">{{ message }}</p>
+        </div>
+        {% endif %}
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% endwith %}
 
+      <h1 class="text-3xl font-bold text-purple-700 text-center">
+        Classificador de Emails
+      </h1>
+      <p class="text-md text-gray-600 text-center mt-2">
+        Classifique em <b>Produtivo/Improdutivo</b> e gere uma
+        <b>resposta automática</b> com IA.
+      </p>
+    </header>
+
+    <form id="formId" class="space-y-6" method="post" enctype="multipart/form-data">
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label for="remetenteId" class="block text-sm font-bold text-gray-700 mb-1">Remetente:</label>
+          <label for="remetenteId" class="block text-sm font-semibold text-gray-700 mb-1">Remetente:</label>
           <input id="remetenteId" name="remetente" type="email"
-            class="form-input transition duration-150 ease-in-out block w-full border border-gray-300 rounded-lg shadow-sm py-2 px-3 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-            placeholder="exemplo@exemplo.com" required>
+            class="form-input block w-full border border-gray-300 rounded-lg shadow-sm py-2 px-3 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition duration-150"
+            placeholder="exemplo@remetente.com" />
         </div>
         <div>
-          <label for="destinatarioId" class="block text-sm font-bold text-gray-700 mb-1">Destinatário:</label>
+          <label for="destinatarioId" class="block text-sm font-semibold text-gray-700 mb-1">Destinatário:</label>
           <input id="destinatarioId" name="destinatario" type="email"
-            class="form-input transition duration-150 ease-in-out block w-full border border-gray-300 rounded-lg shadow-sm py-2 px-3 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-            placeholder="exemplo@exemplo.com" required>
+            class="form-input block w-full border border-gray-300 rounded-lg shadow-sm py-2 px-3 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 transition duration-150"
+            placeholder="exemplo@destinatario.com" />
         </div>
       </div>
       <div>
-        <label for="descricaoId" class="block text-sm font-bold text-gray-700 mb-1">Descrição:</label>
-        <textarea id="descriptionId" name="descricao" rows="5"
-          class="form-textarea transition duration-150 ease-in-out block w-full border border-gray-300 rounded-lg shadow-sm py-2 px-3 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-y"
-          placeholder="Digite as informações do email aqui para que a IA possa analisá-lo." autofocus>
-        </textarea>
+        <label for="descriptionId" class="block text-sm font-semibold text-gray-700 mb-1">Descreva ou cole o conteúdo do
+          email:</label>
+        <textarea id="descriptionId" name="conteudo_email" rows="6"
+          class="form-textarea block w-full border border-gray-300 rounded-lg shadow-sm py-2 px-3 text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-y transition duration-150"
+          placeholder="Cole o texto completo do email aqui (alternativa ao upload de arquivo)."></textarea>
       </div>
-
-      <div id="suggestionsId"
-        class="p-3 bg-purple-50 border border-purple-200 rounded-lg text-sm text-purple-800 shadow-inner">
-        <p><span class="font-semibold">Aguardando análise da IA:</span> A classificação aparecerá aqui após o envio.</p>
-      </div>
-      <!-- Upload de arquivos -->
       <div>
         <label for="dropfileId" id="dropAreaLabelId"
-          class="flex flex-col items-center justify-center w-full h-40 border-2 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition duration-150 border-gray-300 text-gray-500 hover:text-gray-700">
-          <p class="mb-1 text-sm"><span class="font-bold">Clique para selecionar</span> ou arraste o anexo aqui</p>
-          <p id="fileNameDisplayId" class="text-xs">Apenas arquivos <span class="font-mono">.txt</span> ou <span
-              class="font-mono">.pdf</span></p>
-          <input id="dropfileId" name="anexo" type="file" class="hidden" accept=".txt,.pdf" />
+          class="drag-area-label flex flex-col items-center justify-center w-full h-24 border-2 border-dashed rounded-lg cursor-pointer bg-gray-50 hover:bg-gray-100 transition duration-150 border-gray-300 text-gray-500 hover:text-gray-700">
+          <p class="mb-1 text-sm">
+            <span class="font-bold">Clique para selecionar</span> ou arraste o
+            anexo aqui
+          </p>
+          <p id="fileNameDisplayId" class="text-xs">
+            Apenas arquivos <span class="font-mono">.txt</span> ou
+            <span class="font-mono">.pdf</span>
+          </p>
+          <input id="dropfileId" name="arquivo_email" type="file" class="hidden" accept=".txt,.pdf" />
         </label>
       </div>
       <div>
         <button id="submitId"
-          class="w-full transition duration-300 shadow-md bg-purple-600 hover:bg-purple-700 focus:ring-4 focus:ring-purple-300 focus:ring-opacity-50 text-white font-semibold py-3 px-4 rounded-lg focus:outline-none disabled:opacity-50"
-          type="submit">Analisar Email</button>
+          class="w-full transition duration-300 shadow-lg bg-purple-600 hover:bg-purple-700 focus:ring-4 focus:ring-purple-300 focus:ring-opacity-70 text-white font-semibold py-3 px-4 rounded-lg focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+          type="submit">
+          Analisar Email com IA
+        </button>
       </div>
     </form>
+
+    {% if resultado_ia %}
+    <div id="resultadoId" class="mt-8 pt-6 border-t border-gray-200">
+      <h2 class="text-2xl font-bold text-gray-800 mb-4 text-center">
+        Resultado da Análise da IA
+      </h2>
+      {% set categoria = resultado_ia.categoria %} {% set is_produtivo =
+      categoria == 'Produtivo' %}
+      <div
+        class="p-4 rounded-lg shadow-md mb-6 {{ 'bg-green-100 border-l-4 border-green-500' if is_produtivo else 'bg-yellow-100 border-l-4 border-yellow-500' }}">
+        <p class="text-sm font-semibold {{ 'text-green-700' if is_produtivo else 'text-yellow-700' }}">
+          CLASSIFICAÇÃO DO EMAIL
+        </p>
+        <span class="text-3xl font-extrabold block mt-1 {{ 'text-green-900' if is_produtivo else 'text-yellow-900' }}">
+          {{ categoria.upper() }}
+        </span>
+      </div>
+
+      <div class="bg-purple-50 border border-purple-300 rounded-lg p-5 shadow-inner">
+        <p class="text-lg font-bold text-purple-800 mb-3 flex items-center">
+          <svg class="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
+            <path d="M2.003 5.884L10 9.882l7.997-3.998A2 2 0 0016 4H4a2 2 0 00-1.997 1.884z"></path>
+            <path d="M18 8.118l-8 4-8-4V14a2 2 0 002 2h12a2 2 0 002-2V8.118z"></path>
+          </svg>
+          Resposta Automática Sugerida:
+        </p>
+        <div class="whitespace-pre-wrap text-gray-700 bg-white p-3 rounded border border-gray-200">
+          {{ resultado_ia.resposta_sugerida }}
+        </div>
+      </div>
+    </div>
+    {% else %}
+    <div id="suggestionsId"
+      class="mt-8 p-4 bg-purple-50 border border-purple-300 rounded-lg text-sm text-purple-800 shadow-md">
+      <p class="flex items-center">
+        <span class="font-semibold">Aguardando Análise: </span> O resultado da
+        IA e a resposta sugerida aparecerão aqui após o envio.
+      </p>
+    </div>
+    {% endif %}
   </div>
+
 
   <script>
     const form = document.getElementById('formId');
+    const descriptionArea = document.getElementById('descriptionId');
+    const submitButton = document.getElementById('submitId');
     const dropAreaLabel = document.getElementById('dropAreaLabelId');
     const dropFile = document.getElementById('dropfileId');
     const fileNameDisplay = document.getElementById('fileNameDisplayId');
-    const submit = document.getElementById('submitId');
 
-    // Exibir nome do arquivo dropado
-    dropFile.addEventListener('change', () => {
-      handleFiles(dropFile.files);
+    // Validação do formulário
+    form.addEventListener('submit', function (e) {
+      if (!descriptionArea.value.trim() && dropFile.files.length === 0) {
+        alert("Por favor, cole o conteúdo do email ou anexe um arquivo .txt/.pdf para análise.");
+        e.preventDefault();
+        return;
+      }
+
+      submitButton.disabled = true;
+      submitButton.innerHTML = `
+        <span class="flex items-center justify-center">
+          <span class="spinner mr-2"></span>
+          Analisando...
+        </span>`;
+    });
+
+    // Upload/Arrastar arquivos
+    dropFile.addEventListener('change', () => handleFiles(dropFile.files));
+
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+      dropAreaLabel.addEventListener(eventName, preventDefaults, false);
+      document.body.addEventListener(eventName, preventDefaults, false);
+    });
+
+    ['dragenter', 'dragover'].forEach(eventName => {
+      dropAreaLabel.classList.add('drag-area-active');
+    });
+
+    ['dragleave', 'drop'].forEach(eventName => {
+      dropAreaLabel.classList.remove('drag-area-active');
     });
 
     dropAreaLabel.addEventListener('drop', (e) => {
@@ -90,51 +201,43 @@
       const files = dt.files;
       handleFiles(files);
       dropFile.files = files;
-    });
+    }, false);
 
+    function preventDefaults(e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
 
     function handleFiles(files) {
       if (files.length > 0) {
-        // Atualiza o texto para mostrar o nome do arquivo
-        fileNameDisplay.innerHTML = `<span class="font-bold text-purple-600">${files[0].name}</span> anexado com sucesso!`;
+        const file = files[0];
+        const allowedExtensions = ['.txt', '.pdf'];
+        const isAllowed = allowedExtensions.some(ext => file.name.toLowerCase().endsWith(ext));
+
+        if (isAllowed) {
+          fileNameDisplay.innerHTML =
+            `<span class="font-bold text-purple-600">${file.name}</span> (${(file.size / 1024).toFixed(2)} KB) Clique para remover.`;
+          descriptionArea.disabled = true;
+          descriptionArea.placeholder = "Conteúdo do arquivo será usado. Desative o arquivo para digitar.";
+          descriptionArea.classList.add('bg-gray-100', 'cursor-not-allowed');
+        } else {
+          fileNameDisplay.innerHTML =
+            `<span class="font-bold text-red-600">Arquivo inválido:</span> ${file.name}. Apenas no formato .txt ou .pdf.`;
+          dropFile.value = "";
+          descriptionArea.disabled = false;
+          descriptionArea.placeholder = "Cole o texto completo do email aqui...";
+          descriptionArea.classList.remove('bg-gray-100', 'cursor-not-allowed');
+        }
       } else {
-        // Restaura o texto original
-        fileNameDisplay.innerHTML = `Apenas arquivos <span class="font-mono">.txt</span> ou <span class="font-mono">.pdf</span>`;
+        fileNameDisplay.innerHTML =
+          `Apenas arquivos <span class="font-mono">.txt</span> ou <span class="font-mono">.pdf</span>`;
+        descriptionArea.disabled = false;
+        descriptionArea.placeholder =
+          "Cole o texto completo do email aqui (alternativa ao upload de arquivo).";
+        descriptionArea.classList.remove('bg-gray-100', 'cursor-not-allowed');
       }
     }
-
-    // Evento de envio de sugestoes no formulario
-    form.addEventListener('submit', function (e) {
-      e.preventDefault();
-
-      submit.disabled = true;
-      submit.textContent = 'Analisando... ';
-
-      setTimeout(() => {
-        const suggestionsArea = document.getElementById('suggestionsId');
-
-        // Sugestão de resposta da IA
-        const remetente = document.getElementById('remetenteId').value;
-        const classificacao = 'Prioridade Alta - Teste de IA';
-        const categoria = 'Hugging Face';
-
-        suggestionsArea.innerHTML = `
-                    <p class="mb-2"><span class="font-semibold text-purple-900">Resultado da Sugestão (IA):</span></p>
-                    <ul class="list-disc list-inside space-y-1">
-                        <li><span class="font-medium">Classificação:</span> ${classificacao}</li>
-                        <li><span class="font-medium">Categoria:</span> ${categoria}</li>
-                        <li><span class="font-medium">Ação Sugerida:</span> Responder em até 4h.</li>
-                    </ul>`;
-
-        submit.disabled = false;
-        submit.textContent = 'Analisar Email';
-
-      }, 2500); // Aguarda 2.5 segundos para processar a sugestão da IA
-    });
-
-
   </script>
-
 </body>
 
 </html>

@@ -4,5 +4,5 @@ python-dotenv
 torch 
 transformers
 flask-mail
-
+werkzeug
 
