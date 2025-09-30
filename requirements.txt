@@ -3,6 +3,7 @@ pdfplumber
 python-dotenv
 torch 
 transformers
+huggingface_hub
 flask-mail
 werkzeug
 

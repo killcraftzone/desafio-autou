@@ -15,6 +15,10 @@ load_dotenv()
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv("SECRET_KEY", secrets.token_hex(32))
+
+
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
+
 # Pasta temporária para uploads
 app.config['UPLOAD_FOLDER'] = tempfile.mkdtemp()
 ALLOWED_EXTENSIONS = {'txt', 'pdf'}
@@ -26,6 +30,7 @@ app.config['MAIL_USE_TLS'] = os.environ.get('MAIL_USE_TLS') == 'True'
 app.config['MAIL_USERNAME'] = os.environ.get('MAIL_USERNAME')
 app.config['MAIL_PASSWORD'] = os.environ.get('MAIL_PASSWORD')
 app.config['MAIL_DEFAULT_SENDER'] = os.environ.get('MAIL_USERNAME')
+
 mail = Mail(app)
 
 # Config da IA (Hugging Face)
@@ -35,49 +40,81 @@ generator = None
 if hf_token:
     try:
         login(token=hf_token)
-        # Usamos gpt2 para simular a geração de resposta
-        generator = pipeline("text-generation", model="gpt2")
-        print("Modelo de IA 'gpt2' carregado e pronto.")
+        generator = pipeline(
+            "text-generation", model="microsoft/DialoGPT-medium")
+        print("Modelo de IA 'microsoft/DialoGPT-medium' carregado e pronto.")
     except Exception as e:
         print(f"Falha ao logar ou carregar o modelo de IA: {e}")
+        try:
+            generator = pipeline("text-generation", model="gpt2")
+            print("Modelo de fallback 'gpt2' carregado.")
+        except Exception as e2:
+            print(f"Falha ao carregar modelo de fallback: {e2}")
+            generator = None
 else:
     print("Variável HUGGINGFACE_TOKEN não encontrada. A IA será desabilitada.")
 
 
-def allowed_file(filename):
+def allowed_file(filename: str) -> bool:
     # Verifica a extensão do arquivo selecionado
-    return '.' in filename and \
-           filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-def extract_text_from_pdf(file_path):
+def extract_text_from_pdf(file_path: str) -> str:
     # Extrai o texto de um arquivo PDF
     try:
         text = ""
         with pdfplumber.open(file_path) as pdf:
             # Limita o pdf em 5 páginas
             for page in pdf.pages[:5]:
-                text += page.extract_text() or ""
-        return text
+                page_text = page.extract_text()
+                if page_text:
+                    text += page_text + "\n"
+
+        if not text.strip():
+            app.logger.warning("PDF não contém texto extraível")
+            return ""
+
+        return text.strip()
     except Exception as e:
         app.logger.error(f"Erro ao extrair o PDF: {e}")
         return ""
 
 
-def analyze_email_with_ia(email_content, generator_pipeline):
-    # Simula uma resposta com IA
+def analyze_email_with_ia(email_content: str, generator_pipeline) -> dict:
+    # Analisa o email e gera uma resposta com IA
     if not generator_pipeline:
         return {
             'categoria': 'IA Indisponível',
-            'resposta_sugerida': 'O serviço de IA não está ativo.'
+            'resposta_sugerida': 'O serviço de IA não está ativo. Por favor, configure o token do Hugging Face.'
         }
 
     content_lower = email_content.lower()
-    is_produtivo = len(
-        email_content) > 300 or 'importante' in content_lower or 'urgente' in content_lower
+
+    # Palavras-chave para classificação
+    palavras_produtivas = ['importante', 'urgente', 'reunião', 'projeto',
+                           'trabalho', 'negócio', 'cliente', 'proposta', 'contrato']
+    palavras_improdativas = ['spam', 'promoção', 'oferta',
+                             'desconto', 'marketing', 'newsletter', 'publicidade']
+
+    count_produtivo = sum(
+        1 for palavra in palavras_produtivas if palavra in content_lower)
+    count_improdutivo = sum(
+        1 for palavra in palavras_improdativas if palavra in content_lower)
+
+    is_produtivo = (
+        len(email_content) > 200 or
+        count_produtivo > count_improdutivo or
+        count_produtivo >= 2 or
+        ('@' in email_content and len(email_content.split()) > 10)
+    )
+
     categoria = 'Produtivo' if is_produtivo else 'Improdutivo'
 
-    prompt = f"Gere uma resposta para o email. O email é sobre um tópico {categoria}: '{email_content}'\n\nResposta Sugerida:"
+    if is_produtivo:
+        prompt = f"Responda profissionalmente ao seguinte email: {email_content[:500]}"
+    else:
+        prompt = f"Gere uma resposta educada mas breve para este email: {email_content[:500]}"
 
     try:
         # Pausa para o processamento da IA
@@ -85,25 +122,36 @@ def analyze_email_with_ia(email_content, generator_pipeline):
 
         result = generator_pipeline(
             prompt,
-            max_length=200 + len(prompt.split()),
-            min_length=50,
+            max_length=min(150 + len(prompt.split()), 512),
+            min_length=30,
             num_return_sequences=1,
             do_sample=True,
-            temperature=0.8,
-            pad_token_id=generator_pipeline.tokenizer.eos_token_id
+            temperature=0.7,
+            pad_token_id=generator_pipeline.tokenizer.eos_token_id,
+            truncation=True
         )
 
         raw_response = result[0]["generated_text"].replace(prompt, '').strip()
 
-        resposta_sugerida = f"Prezado(a),\n\n{raw_response}\n\nAtenciosamente,\nAssistente IA."
+        # Limpa e formata a resposta
+        if raw_response:
+            # Remove caracteres especiais e quebras de linha excessivas
+            raw_response = ' '.join(raw_response.split())
+            resposta_sugerida = f"Prezado(a),\n\n{raw_response}\n\nAtenciosamente,\nAssistente IA."
+        else:
+            resposta_sugerida = "Obrigado pelo seu email. Entraremos em contato em breve.\n\nAtenciosamente,\nAssistente IA."
 
     except Exception as e:
         app.logger.error(f"Erro na geração de texto da IA: {e}")
-        resposta_sugerida = "Falha ao gerar a resposta de IA."
+        # Resposta padrão baseada na categoria
+        if is_produtivo:
+            resposta_sugerida = "Obrigado pelo seu email. Analisaremos sua solicitação e retornaremos em breve.\n\nAtenciosamente,\nAssistente IA."
+        else:
+            resposta_sugerida = "Obrigado pelo contato. Seu email foi recebido.\n\nAtenciosamente,\nAssistente IA."
 
     return {
         'categoria': categoria,
-        'resposta_sugerida': resposta_sugerida
+        'resposta_sugerida': resposta_sugerida,
     }
 
 
@@ -120,17 +168,45 @@ def classificador_email():
         full_text = conteudo_email
         filepath = None
 
-        if arquivo_email and arquivo_email.filename and allowed_file(arquivo_email.filename):
+        if arquivo_email and arquivo_email.filename:
+            # Validação adicional de segurança
+            if not allowed_file(arquivo_email.filename):
+                flash('Tipo de arquivo não permitido. Use apenas .txt ou .pdf.', 'error')
+                return redirect(url_for('classificador_email'))
+
+            arquivo_email.seek(0, 2)
+            file_size = arquivo_email.tell()
+            arquivo_email.seek(0)
+
+            if file_size > 10 * 1024 * 1024:
+                flash('Arquivo muito grande. Tamanho máximo permitido: 10MB.', 'error')
+                return redirect(url_for('classificador_email'))
+
             try:
                 filename = secure_filename(arquivo_email.filename)
+                if not filename:
+                    flash('Nome do arquivo inválido.', 'error')
+                    return redirect(url_for('classificador_email'))
+
                 filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 arquivo_email.save(filepath)
 
                 if filename.endswith('.pdf'):
                     text_from_file = extract_text_from_pdf(filepath)
-                elif filename.endswith('.txt'):
-                    with open(filepath, 'r', encoding='utf-8') as f:
-                        text_from_file = f.read()
+                    if not text_from_file:
+                        flash(
+                            'Não foi possível extrair texto do PDF. Verifique se o arquivo contém texto.', 'error')
+                        return redirect(url_for('classificador_email'))
+                else:
+                    try:
+                        with open(filepath, 'r', encoding='utf-8') as f:
+                            text_from_file = f.read()
+                        if not text_from_file.strip():
+                            flash('Arquivo de texto está vazio.', 'error')
+                            return redirect(url_for('classificador_email'))
+                    except UnicodeDecodeError:
+                        flash('Erro de codificação no arquivo. Use UTF-8.', 'error')
+                        return redirect(url_for('classificador_email'))
 
                 # Adiciona o texto do arquivo a variavel full_text
                 full_text = text_from_file
@@ -140,22 +216,33 @@ def classificador_email():
                 app.logger.error(f"Erro ao processar arquivo: {e}")
                 flash('Erro ao processar o arquivo anexado.', 'error')
                 return redirect(url_for('classificador_email'))
-            finally:
-                if filepath and os.path.exists(filepath):
-                    os.remove(filepath)
 
-        # Remove os arquivos temporários
-        shutil.rmtree(app.config['UPLOAD_FOLDER'])
-        app.config['UPLOAD_FOLDER'] = tempfile.mkdtemp()
+            finally:
+                # Limpa apenas o arquivo específico que foi processado
+                if filepath and os.path.exists(filepath):
+                    try:
+                        os.remove(filepath)
+                    except Exception as e:
+                        app.logger.error(
+                            f"Erro ao remover arquivo temporário: {e}")
 
         if not full_text.strip():
-            flash(
-                'Informe o conteúdo do email para análise.', 'error')
+            flash('Informe o conteúdo do email para análise.', 'error')
+            return redirect(url_for('classificador_email'))
+
+        if len(full_text) > 50 * 1024:
+            flash('Conteúdo do email muito longo. Limite máximo: 50KB.', 'error')
             return redirect(url_for('classificador_email'))
 
         resultado_ia = analyze_email_with_ia(full_text, generator)
 
     return render_template("index.html", resultado_ia=resultado_ia)
+
+
+@app.errorhandler(413)
+def too_large(e):
+    flash('Arquivo muito grande. Tamanho máximo permitido: 10MB.', 'error')
+    return redirect(url_for('classificador_email'))
 
 
 @app.teardown_appcontext
