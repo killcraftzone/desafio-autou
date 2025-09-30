@@ -250,7 +250,8 @@ def shutdown_session(exception=None):
     # Limpa a pasta temporária ao executar uma nova análise
     try:
         if os.path.exists(app.config['UPLOAD_FOLDER']):
-            shutil.rmtree(app.config['UPLOAD_FOLDER'])
+            if app.config['UPLOAD_FOLDER'].startswith(tempfile.gettempdir()):
+                shutil.rmtree(app.config['UPLOAD_FOLDER'])
     except Exception as e:
         print(f"Erro ao limpar a pasta temporária: {e}")
 

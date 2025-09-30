@@ -1,13 +1,27 @@
+# Versão do esquema Render
+version: 1
+
+# Serviço Web para hospedar a aplicação Flask
 services:
   - type: web
-    name: email-classificador
+    name: email-classifier-flask
     env: python
-    plan: free
-    region: oregon   # ou deixe vazio para auto
+    # Define a porta que a aplicação irá ouvir (Render injeta a variável $PORT)
+    # Por padrão, Gunicorn ouve na $PORT
+    port: 5000 
+    
+    # O comando para instalar as dependências
     buildCommand: "pip install -r requirements.txt"
+    
+    # O comando para iniciar a aplicação usando Gunicorn,
+    # seguindo o formato: gunicorn [nome_do_arquivo]:[nome_da_instância_flask]
     startCommand: "gunicorn app:app"
-    envVars:
-      - key: SECRET_KEY
-        value: "sua_chave_secreta_aqui"
-      - key: HF_TOKEN
-        sync: false
+    
+    # Configurações de ambiente (Opcional, mas útil para planos maiores)
+    # instanceType: standard # Exemplo de instância se você precisar de mais RAM para a IA
+    
+    # IMPORTANTE: Você DEVE definir as seguintes variáveis de ambiente
+    # no painel de controle do Render para que a aplicação funcione:
+    # - SECRET_KEY
+    # - HUGGINGFACE_TOKEN (essencial para a IA)
+    # - MAIL_SERVER, MAIL_PORT, MAIL_USE_TLS, MAIL_USERNAME, MAIL_PASSWORD (para o Flask-Mail)
