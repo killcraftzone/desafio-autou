@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: email-classificador
+    env: python
+    plan: free
+    region: oregon   # ou deixe vazio para auto
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn app:app"
+    envVars:
+      - key: SECRET_KEY
+        value: "sua_chave_secreta_aqui"
+      - key: HF_TOKEN
+        sync: false

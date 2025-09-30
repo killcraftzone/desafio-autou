@@ -17,7 +17,7 @@ app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv("SECRET_KEY", secrets.token_hex(32))
 
 
-app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024  
+app.config['MAX_CONTENT_LENGTH'] = 10 * 1024 * 1024
 
 # Pasta temporária para uploads
 app.config['UPLOAD_FOLDER'] = tempfile.mkdtemp()
@@ -40,7 +40,8 @@ generator = None
 if hf_token:
     try:
         login(token=hf_token)
-        generator = pipeline("text-generation", model="microsoft/DialoGPT-medium")
+        generator = pipeline(
+            "text-generation", model="microsoft/DialoGPT-medium")
         print("Modelo de IA 'microsoft/DialoGPT-medium' carregado e pronto.")
     except Exception as e:
         print(f"Falha ao logar ou carregar o modelo de IA: {e}")
@@ -69,11 +70,11 @@ def extract_text_from_pdf(file_path: str) -> str:
                 page_text = page.extract_text()
                 if page_text:
                     text += page_text + "\n"
-        
+
         if not text.strip():
             app.logger.warning("PDF não contém texto extraível")
             return ""
-            
+
         return text.strip()
     except Exception as e:
         app.logger.error(f"Erro ao extrair o PDF: {e}")
@@ -89,22 +90,25 @@ def analyze_email_with_ia(email_content: str, generator_pipeline) -> dict:
         }
 
     content_lower = email_content.lower()
-    
-    # Palavras-chave para classificação 
-    palavras_produtivas = ['importante', 'urgente', 'reunião', 'projeto', 'trabalho', 'negócio', 'cliente', 'proposta', 'contrato']
-    palavras_improdativas = ['spam', 'promoção', 'oferta', 'desconto', 'marketing', 'newsletter', 'publicidade']
-    
-    count_produtivo = sum(1 for palavra in palavras_produtivas if palavra in content_lower)
-    count_improdutivo = sum(1 for palavra in palavras_improdativas if palavra in content_lower)
-    
+
+    # Palavras-chave para classificação
+    palavras_produtivas = ['importante', 'urgente', 'reunião', 'projeto',
+                           'trabalho', 'negócio', 'cliente', 'proposta', 'contrato']
+    palavras_improdativas = ['spam', 'promoção', 'oferta',
+                             'desconto', 'marketing', 'newsletter', 'publicidade']
+
+    count_produtivo = sum(
+        1 for palavra in palavras_produtivas if palavra in content_lower)
+    count_improdutivo = sum(
+        1 for palavra in palavras_improdativas if palavra in content_lower)
 
     is_produtivo = (
-        len(email_content) > 200 or  
+        len(email_content) > 200 or
         count_produtivo > count_improdutivo or
         count_produtivo >= 2 or
-        ('@' in email_content and len(email_content.split()) > 10) 
+        ('@' in email_content and len(email_content.split()) > 10)
     )
-    
+
     categoria = 'Produtivo' if is_produtivo else 'Improdutivo'
 
     if is_produtivo:
@@ -118,17 +122,17 @@ def analyze_email_with_ia(email_content: str, generator_pipeline) -> dict:
 
         result = generator_pipeline(
             prompt,
-            max_length=min(150 + len(prompt.split()), 512),  
+            max_length=min(150 + len(prompt.split()), 512),
             min_length=30,
             num_return_sequences=1,
             do_sample=True,
-            temperature=0.7,  
+            temperature=0.7,
             pad_token_id=generator_pipeline.tokenizer.eos_token_id,
             truncation=True
         )
 
         raw_response = result[0]["generated_text"].replace(prompt, '').strip()
-        
+
         # Limpa e formata a resposta
         if raw_response:
             # Remove caracteres especiais e quebras de linha excessivas
@@ -169,28 +173,29 @@ def classificador_email():
             if not allowed_file(arquivo_email.filename):
                 flash('Tipo de arquivo não permitido. Use apenas .txt ou .pdf.', 'error')
                 return redirect(url_for('classificador_email'))
-            
-            arquivo_email.seek(0, 2) 
+
+            arquivo_email.seek(0, 2)
             file_size = arquivo_email.tell()
-            arquivo_email.seek(0)  
-            
-            if file_size > 10 * 1024 * 1024:  
+            arquivo_email.seek(0)
+
+            if file_size > 10 * 1024 * 1024:
                 flash('Arquivo muito grande. Tamanho máximo permitido: 10MB.', 'error')
                 return redirect(url_for('classificador_email'))
-            
+
             try:
                 filename = secure_filename(arquivo_email.filename)
-                if not filename:  
+                if not filename:
                     flash('Nome do arquivo inválido.', 'error')
                     return redirect(url_for('classificador_email'))
-                
+
                 filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
                 arquivo_email.save(filepath)
 
                 if filename.endswith('.pdf'):
                     text_from_file = extract_text_from_pdf(filepath)
                     if not text_from_file:
-                        flash('Não foi possível extrair texto do PDF. Verifique se o arquivo contém texto.', 'error')
+                        flash(
+                            'Não foi possível extrair texto do PDF. Verifique se o arquivo contém texto.', 'error')
                         return redirect(url_for('classificador_email'))
                 else:
                     try:
@@ -218,13 +223,14 @@ def classificador_email():
                     try:
                         os.remove(filepath)
                     except Exception as e:
-                        app.logger.error(f"Erro ao remover arquivo temporário: {e}")
+                        app.logger.error(
+                            f"Erro ao remover arquivo temporário: {e}")
 
         if not full_text.strip():
             flash('Informe o conteúdo do email para análise.', 'error')
             return redirect(url_for('classificador_email'))
-        
-        if len(full_text) > 50 * 1024:  
+
+        if len(full_text) > 50 * 1024:
             flash('Conteúdo do email muito longo. Limite máximo: 50KB.', 'error')
             return redirect(url_for('classificador_email'))
 
@@ -249,12 +255,11 @@ def shutdown_session(exception=None):
         print(f"Erro ao limpar a pasta temporária: {e}")
 
 
-
+"""
 if __name__ == '__main__':
+    app.run(debug=True)
+"""
+
+if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port, debug=False)
-
-"""
-if __name__ == '__main__':
-    app.run(debug=True, threaded=True)
-"""
+    app.run(host="0.0.0.0", port=port)
